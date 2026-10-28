@@ -1,0 +1,317 @@
+=====================================================================
+ gateway-server: every route and role rule as a ready-to-use curl
+=====================================================================
+
+ HOW TO USE
+ - Postman: Import -> Raw text -> paste one curl -> Continue -> Import.
+   (or paste the curl straight into Postman's URL bar)
+ - Terminal: paste into Git Bash. (Not into CMD or PowerShell: they do not
+   understand the ' quotes.)
+ - To run all of them at once with PASS / FAIL:  bash curl/run-all.sh
+
+ This is how the frontend talks to the backend: everything goes to the
+ gateway on http://localhost:5002. The gateway checks the token and the
+ role, then sends the request to the right service (found in Eureka).
+
+ Needs running: Eureka (8070), Keycloak (8080), gateway (5002) and the
+ services behind it: user 5009, salon 5008, category 5010,
+ service-offering 5003, booking 5001, payment 5004, notification 5007.
+
+ Everything is filled in. The only thing you replace is:
+   PASTE_CUSTOMER_TOKEN  -> the "jwt" from step 2
+   PASTE_OWNER_TOKEN     -> the "jwt" from step 3
+   PASTE_ADMIN_TOKEN     -> the "access_token" from step 4
+   PASTE_SALON_ID        -> the "id" from step 9
+   PASTE_CATEGORY_ID     -> the "id" from step 11
+   PASTE_SERVICE_ID      -> the "id" from step 12
+   PASTE_CUSTOMER_ID     -> the "id" from step 5
+ Copy only the value, without the quotes.
+
+ DATES: a booking must be in the future, 09:00-20:00. Step 14 uses
+ 2026-12-01; change it to any future day if that date has passed.
+ If sign up says 409 "already exists", change the email and username.
+
+
+=====================================================================
+ OPEN ROUTES (no token)
+=====================================================================
+
+---------------------------------------------------------------------
+ 1. Gateway health                                      expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/actuator/health'
+
+
+---------------------------------------------------------------------
+ 2. Sign up a customer, through the gateway             expect 200
+    -> user-service. Answer has "jwt" (= PASTE_CUSTOMER_TOKEN)
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/auth/signup' \
+--header 'Content-Type: application/json' \
+--data '{
+    "email": "gwcustomer1@example.com",
+    "username": "gwcustomer1",
+    "password": "Passw0rd-123",
+    "fullName": "Gateway Customer",
+    "role": "CUSTOMER"
+}'
+
+
+---------------------------------------------------------------------
+ 3. Sign up a salon owner, through the gateway          expect 200
+    Answer has "jwt" (= PASTE_OWNER_TOKEN)
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/auth/signup' \
+--header 'Content-Type: application/json' \
+--data '{
+    "email": "gwowner1@example.com",
+    "username": "gwowner1",
+    "password": "Passw0rd-123",
+    "fullName": "Gateway Owner",
+    "role": "SALON_OWNER"
+}'
+
+
+---------------------------------------------------------------------
+ 4. Admin token, straight from Keycloak                 expect 200
+    Answer has "access_token" (= PASTE_ADMIN_TOKEN)
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:8080/realms/master/protocol/openid-connect/token' \
+--data-urlencode 'client_id=salon-booking-client' \
+--data-urlencode 'client_secret=<KEYCLOAK_CLIENT_SECRET>' \
+--data-urlencode 'grant_type=password' \
+--data-urlencode 'username=<KEYCLOAK_ADMIN_USERNAME>' \
+--data-urlencode 'password=<KEYCLOAK_ADMIN_PASSWORD>'
+
+
+=====================================================================
+ USER-SERVICE through the gateway
+=====================================================================
+
+---------------------------------------------------------------------
+ 5. My profile (any role)                               expect 200
+    Note the "id" (= PASTE_CUSTOMER_ID)
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/users/profile' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 6. All users (ADMIN only)                              expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/users' \
+--header 'Authorization: Bearer PASTE_ADMIN_TOKEN'
+
+
+=====================================================================
+ SALON, CATEGORY, SERVICE-OFFERING through the gateway
+=====================================================================
+
+---------------------------------------------------------------------
+ 7. All salons (any role)                               expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/salons' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 8. Search salons by city (any role)                    expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/salons/search?city=Pune' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 9. Create a salon (SALON_OWNER or ADMIN)               expect 200
+    Answer has "id" (= PASTE_SALON_ID)
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/salons/createSalon' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_OWNER_TOKEN' \
+--data '{
+    "name": "Gateway Test Salon",
+    "address": "12 MG Road",
+    "city": "Pune",
+    "phoneNumber": "9876543210",
+    "email": "gwsalon@example.com",
+    "images": ["https://example.com/salon.jpg"],
+    "openTime": "09:00:00",
+    "closeTime": "20:00:00"
+}'
+
+
+---------------------------------------------------------------------
+ 10. One salon (any role)                               expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/salons/PASTE_SALON_ID' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 11. Create a category (SALON_OWNER or ADMIN)           expect 200
+     Answer has "id" (= PASTE_CATEGORY_ID)
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/category/salon-owner' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_OWNER_TOKEN' \
+--data '{
+    "name": "Hair",
+    "image": "https://example.com/hair.jpg"
+}'
+
+
+---------------------------------------------------------------------
+ 12. Create a service (SALON_OWNER or ADMIN)            expect 200
+     Answer has "id" (= PASTE_SERVICE_ID)
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/service-offering/salon-owner' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_OWNER_TOKEN' \
+--data '{
+    "name": "Haircut",
+    "description": "Wash and cut",
+    "price": 500,
+    "duration": 30,
+    "categoryId": PASTE_CATEGORY_ID,
+    "image": "https://example.com/haircut.jpg"
+}'
+
+
+---------------------------------------------------------------------
+ 13. Categories and services of a salon (any role)      expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/category/salonId/PASTE_SALON_ID' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+curl --location --request GET 'http://localhost:5002/api/service-offering/salon/PASTE_SALON_ID' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+=====================================================================
+ BOOKING, NOTIFICATION through the gateway
+=====================================================================
+
+---------------------------------------------------------------------
+ 14. Book a slot (any role)                             expect 201
+     booking-service asks payment-service for the link itself.
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/bookings?salonId=PASTE_SALON_ID&paymentMethod=RAZORPAY' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN' \
+--data '{
+    "startTime": "2026-12-01T10:00:00",
+    "servicesIds": [PASTE_SERVICE_ID]
+}'
+
+
+---------------------------------------------------------------------
+ 15. My bookings (any role)                             expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/bookings/customer' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 16. Salon report (SALON_OWNER or ADMIN)                expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/bookings/report' \
+--header 'Authorization: Bearer PASTE_OWNER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 17. My notifications (any role)                        expect 200
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/notifications/user/PASTE_CUSTOMER_ID' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+=====================================================================
+ WHAT THE GATEWAY BLOCKS: each one should fail with the status shown
+=====================================================================
+
+---------------------------------------------------------------------
+ 18. Any API call without a token                       expect 401
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/salons'
+
+
+---------------------------------------------------------------------
+ 19. A broken token                                     expect 401
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/users/profile' \
+--header 'Authorization: Bearer not.a.real.token'
+
+
+---------------------------------------------------------------------
+ 20. Customer lists all users (ADMIN only)              expect 403
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/users' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 21. Customer creates a salon (owner only)              expect 403
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/salons/createSalon' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN' \
+--data '{
+    "name": "Not Allowed"
+}'
+
+
+---------------------------------------------------------------------
+ 22. Customer creates a category (owner only)           expect 403
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/category/salon-owner' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN' \
+--data '{
+    "name": "Not Allowed"
+}'
+
+
+---------------------------------------------------------------------
+ 23. Customer asks for a salon report (owner only)      expect 403
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/bookings/report' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 24. Anyone calls /api/payments/create (only
+     booking-service may, and not through the gateway)  expect 403
+---------------------------------------------------------------------
+curl --location --request POST 'http://localhost:5002/api/payments/create?paymentMethod=RAZORPAY' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN' \
+--data '{
+    "id": 1
+}'
+
+
+---------------------------------------------------------------------
+ 25. Customer lists every notification (ADMIN only)     expect 403
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/notifications' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+---------------------------------------------------------------------
+ 26. A path no rule allows                              expect 403
+---------------------------------------------------------------------
+curl --location --request GET 'http://localhost:5002/api/somethingelse' \
+--header 'Authorization: Bearer PASTE_CUSTOMER_TOKEN'
+
+
+=====================================================================
+ CLEAN UP (straight to user-service: the gateway does not route this)
+=====================================================================
+
+---------------------------------------------------------------------
+ 27. Delete a test account (admin)                      expect 202
+     Run once with the customer's id and once with the owner's id
+     (the owner's id: step 5 with PASTE_OWNER_TOKEN).
+---------------------------------------------------------------------
+curl --location --request DELETE 'http://localhost:5009/api/deleteById/PASTE_CUSTOMER_ID' \
+--header 'Authorization: Bearer PASTE_ADMIN_TOKEN'

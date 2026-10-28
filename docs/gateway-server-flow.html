@@ -1,0 +1,455 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Gateway Server Flow</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; the system map and the request tracer break out wider as the two working surfaces. */
+:root{
+  --bg:#F2F4F8; --panel:#FFFFFF; --sunk:#E7EBF2; --ink:#141C2B; --muted:#56627A; --line:#CBD3E1;
+  --accent:#2747C7; --accent-soft:#E2E8FB;
+  --ok:#12734B; --ok-soft:#DDF2E7; --warn:#8A5A00; --warn-soft:#FBEFD2; --bad:#B3261E; --bad-soft:#FBE3E1;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,"Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0F1420; --panel:#182031; --sunk:#111827; --ink:#E8ECF5; --muted:#9BA7BF; --line:#2F3A52;
+  --accent:#8EA6FF; --accent-soft:#1F2B52;
+  --ok:#5FD3A0; --ok-soft:#12332A; --warn:#F0C060; --warn-soft:#3A2E10; --bad:#FF8F86; --bad-soft:#3F1B1A;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0F1420; --panel:#182031; --sunk:#111827; --ink:#E8ECF5; --muted:#9BA7BF; --line:#2F3A52;
+  --accent:#8EA6FF; --accent-soft:#1F2B52;
+  --ok:#5FD3A0; --ok-soft:#12332A; --warn:#F0C060; --warn-soft:#3A2E10; --bad:#FF8F86; --bad-soft:#3F1B1A;
+  color-scheme:dark }
+
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+.page{max-width:1040px;margin:0 auto;padding-inline:20px;padding-block:40px 72px;display:flex;flex-direction:column;gap:56px}
+.col{max-width:68ch}
+header .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(32px,6vw,52px);line-height:1.05;margin:8px 0 16px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:700;font-size:26px;line-height:1.2;margin:0 0 12px;text-wrap:balance}
+h3{font-size:16px;font-weight:600;margin:0 0 4px}
+p{margin:0 0 12px}
+section{display:flex;flex-direction:column;gap:20px;min-width:0}
+code,.mono{font-family:var(--mono);font-size:.875em}
+code{background:var(--sunk);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.lede{font-size:18px;color:var(--muted)}
+.facts{display:flex;flex-wrap:wrap;gap:8px 24px;font-family:var(--mono);font-size:13px;color:var(--muted);margin-top:8px}
+.facts b{color:var(--ink);font-weight:500}
+
+figure{margin:0;display:flex;flex-direction:column;gap:10px}
+figcaption{font-size:14px;color:var(--muted);max-width:72ch}
+.scroll{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.scroll svg{display:block;min-width:760px;width:100%;height:auto;color:var(--ink)}
+svg text{font-family:var(--body);font-size:13px;fill:currentColor}
+svg .small{font-size:11.5px;fill:var(--muted)}
+svg .m{font-family:var(--mono);font-size:11.5px}
+svg .box{fill:var(--panel);stroke:currentColor;stroke-width:1.2}
+svg .gw{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.6}
+svg .inner{fill:var(--panel);stroke:var(--accent);stroke-width:1.2}
+svg .wire{fill:none;stroke:currentColor;stroke-width:1.3}
+svg .dash{stroke-dasharray:5 4}
+svg .head{fill:currentColor}
+svg .ttl{font-weight:600}
+
+/* pipeline */
+.pipe{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;counter-reset:s}
+.pipe li{counter-increment:s;display:grid;grid-template-columns:36px minmax(0,1fr);gap:0 16px;padding-bottom:22px;position:relative}
+.pipe li::before{content:counter(s);font-family:var(--mono);font-size:13px;width:32px;height:32px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);background:var(--bg);display:grid;place-items:center;z-index:1}
+.pipe li::after{content:"";position:absolute;left:16px;top:32px;bottom:0;width:1.5px;background:var(--line)}
+.pipe li:last-child{padding-bottom:0}.pipe li:last-child::after{display:none}
+.pipe p{margin:0;color:var(--muted);font-size:15px}
+.exit{display:inline-block;font-family:var(--mono);font-size:12px;padding:1px 8px;border-radius:999px;margin-top:6px}
+.exit.bad{background:var(--bad-soft);color:var(--bad)}
+.exit.ok{background:var(--ok-soft);color:var(--ok)}
+.exit.warn{background:var(--warn-soft);color:var(--warn)}
+
+/* tables */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:500;padding:8px 12px;border-bottom:1.5px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n{font-family:var(--mono);color:var(--muted);width:1%}
+tr.dead td{color:var(--muted)}
+.tag{font-family:var(--mono);font-size:12px;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}.tag.bad{background:var(--bad-soft);color:var(--bad)}.tag.warn{background:var(--warn-soft);color:var(--warn)}.tag.info{background:var(--accent-soft);color:var(--accent)}
+
+/* tracer */
+.tracer{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:16px}
+.controls{display:flex;flex-wrap:wrap;gap:12px}
+.controls label{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);flex:1 1 220px;min-width:0}
+.controls input,.controls select{font:inherit;font-family:var(--mono);font-size:14px;letter-spacing:0;text-transform:none;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;min-width:0;width:100%;box-sizing:border-box}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.chips button:hover{border-color:var(--accent);color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:720px){.stages{grid-template-columns:1fr}}
+.stage{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.stage .k{font-family:var(--mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.stage .v{font-size:14.5px;overflow-wrap:anywhere}
+.stage.pass{border-color:var(--ok)}.stage.fail{border-color:var(--bad)}.stage.skip{opacity:.55}
+.verdict{font-family:var(--display);font-size:20px;font-weight:700}
+.verdict.pass{color:var(--ok)}.verdict.fail{color:var(--bad)}
+
+pre{margin:0;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+@media (max-width:720px){.two{grid-template-columns:1fr}}
+.two h3{font-family:var(--mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:500;margin-bottom:6px}
+.arrowrow{font-family:var(--mono);font-size:13px;color:var(--muted);margin:0}
+
+.finds{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.finds li{display:grid;grid-template-columns:84px minmax(0,1fr);gap:4px 16px;padding:16px 0;border-top:1px solid var(--line)}
+.finds li:last-child{border-bottom:1px solid var(--line)}
+.finds p{margin:0;color:var(--muted);font-size:15px}
+.finds .where{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:6px}
+@media (max-width:520px){.finds li{grid-template-columns:1fr}}
+</style>
+
+<div class="page">
+
+<header class="col">
+  <div class="eyebrow">Salon booking system · gateway-server</div>
+  <h1>Gateway Server Flow</h1>
+  <p class="lede">Every request from the app enters through this one server. It does two jobs: it checks who is calling (using a Keycloak token), and it forwards the request to the right microservice (found through Eureka). It holds no business logic and no database.</p>
+  <div class="facts">
+    <span><b>Port</b> 5002</span>
+    <span><b>Stack</b> Spring Cloud Gateway (WebFlux) · Boot 3.4.10 · Java 17</span>
+    <span><b>Keycloak</b> :8080</span>
+    <span><b>Eureka</b> :8070</span>
+    <span><b>Image</b> codecaptcha/gateway-server-yt:v1</span>
+  </div>
+</header>
+
+<section>
+  <div class="col">
+    <h2>The whole system on one page</h2>
+    <p>The gateway is the blue box. Inside it a request passes two stages in a fixed order: security first, routing second. Keycloak and Eureka are helpers the gateway talks to; the client never talks to the eight services directly.</p>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 960 470" role="img" aria-label="The client logs in at Keycloak to get a JWT, sends requests with that JWT to the gateway on port 5002, which verifies it with Keycloak's public keys, looks up the target service in Eureka, and forwards the request to one of eight microservices.">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="head"/></marker></defs>
+
+      <!-- client -->
+      <rect class="box" x="20" y="190" width="130" height="70" rx="6"/>
+      <text class="ttl" x="85" y="221" text-anchor="middle">Client</text>
+      <text class="small" x="85" y="240" text-anchor="middle">web / mobile app</text>
+
+      <!-- keycloak -->
+      <rect class="box" x="330" y="20" width="240" height="56" rx="6"/>
+      <text class="ttl" x="450" y="44" text-anchor="middle">Keycloak</text>
+      <text class="small m" x="450" y="62" text-anchor="middle">:8080 · realm master</text>
+
+      <!-- gateway -->
+      <rect class="gw" x="250" y="140" width="400" height="170" rx="8"/>
+      <text class="ttl" x="270" y="166">gateway-server</text>
+      <text class="small m" x="630" y="166" text-anchor="end">:5002</text>
+      <rect class="inner" x="270" y="186" width="170" height="100" rx="6"/>
+      <text class="ttl" x="355" y="216" text-anchor="middle">Security</text>
+      <text class="small" x="355" y="236" text-anchor="middle">verify JWT signature</text>
+      <text class="small" x="355" y="253" text-anchor="middle">read roles from token</text>
+      <text class="small" x="355" y="270" text-anchor="middle">check path vs. role</text>
+      <rect class="inner" x="460" y="186" width="170" height="100" rx="6"/>
+      <text class="ttl" x="545" y="216" text-anchor="middle">Router</text>
+      <text class="small" x="545" y="236" text-anchor="middle">match path to a route</text>
+      <text class="small" x="545" y="253" text-anchor="middle">pick a live instance</text>
+      <text class="small" x="545" y="270" text-anchor="middle">forward the request</text>
+      <line class="wire" x1="440" y1="236" x2="459" y2="236" marker-end="url(#ah)"/>
+
+      <!-- eureka -->
+      <rect class="box" x="330" y="380" width="240" height="56" rx="6"/>
+      <text class="ttl" x="450" y="404" text-anchor="middle">Eureka registry</text>
+      <text class="small m" x="450" y="422" text-anchor="middle">:8070</text>
+
+      <!-- services -->
+      <g>
+        <rect class="box" x="770" y="46"  width="170" height="36" rx="5"/><text class="m" x="855" y="69"  text-anchor="middle">salon-service</text>
+        <rect class="box" x="770" y="92"  width="170" height="36" rx="5"/><text class="m" x="855" y="115" text-anchor="middle">user-service</text>
+        <rect class="box" x="770" y="138" width="170" height="36" rx="5"/><text class="m" x="855" y="161" text-anchor="middle">Service-Offer</text>
+        <rect class="box" x="770" y="184" width="170" height="36" rx="5"/><text class="m" x="855" y="207" text-anchor="middle">category-service</text>
+        <rect class="box" x="770" y="230" width="170" height="36" rx="5"/><text class="m" x="855" y="253" text-anchor="middle">booking-service</text>
+        <rect class="box" x="770" y="276" width="170" height="36" rx="5"/><text class="m" x="855" y="299" text-anchor="middle">payment-service</text>
+        <rect class="box" x="770" y="322" width="170" height="36" rx="5"/><text class="m" x="855" y="345" text-anchor="middle">notification-service</text>
+        <rect class="box" x="770" y="368" width="170" height="36" rx="5"/><text class="m" x="855" y="391" text-anchor="middle">review-service</text>
+      </g>
+
+      <!-- wires -->
+      <path class="wire" d="M85 190 V48 H329" marker-end="url(#ah)"/>
+      <text class="small" x="100" y="40">A · log in, receive JWT</text>
+
+      <line class="wire" x1="150" y1="225" x2="249" y2="225" marker-end="url(#ah)"/>
+      <text class="small" x="200" y="216" text-anchor="middle">B · request</text>
+      <text class="small" x="200" y="243" text-anchor="middle">+ Bearer JWT</text>
+
+      <line class="wire dash" x1="355" y1="186" x2="355" y2="77" marker-end="url(#ah)"/>
+      <text class="small" x="365" y="112">C · fetch public keys (JWKS)</text>
+
+      <line class="wire dash" x1="545" y1="286" x2="545" y2="379" marker-end="url(#ah)"/>
+      <text class="small" x="555" y="350">D · where is the service?</text>
+
+      <line class="wire" x1="650" y1="236" x2="749" y2="236"/>
+      <text class="small m" x="700" y="227" text-anchor="middle">E · lb://name</text>
+      <line class="wire" x1="750" y1="64" x2="750" y2="386"/>
+      <line class="wire" x1="750" y1="64"  x2="769" y2="64"  marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="110" x2="769" y2="110" marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="156" x2="769" y2="156" marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="202" x2="769" y2="202" marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="248" x2="769" y2="248" marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="294" x2="769" y2="294" marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="340" x2="769" y2="340" marker-end="url(#ah)"/>
+      <line class="wire" x1="750" y1="386" x2="769" y2="386" marker-end="url(#ah)"/>
+
+      <path class="wire dash" d="M855 404 V424 H571" marker-end="url(#ah)"/>
+      <text class="small" x="700" y="442" text-anchor="middle">each service registers itself</text>
+    </svg>
+    </div>
+    <figcaption>Solid arrows carry the user's request. Dashed arrows are lookups the gateway (or a service) makes in the background. Letters A–E give the order of events for one logged-in request.</figcaption>
+  </figure>
+</section>
+
+<section class="col">
+  <h2>One request, step by step</h2>
+  <p>This is what happens inside the gateway between arrow B and arrow E. Each step can end the request early; the status code tells you which step stopped it.</p>
+  <ol class="pipe">
+    <li><div><h3>Request arrives on port 5002</h3>
+      <p>Netty accepts it. The gateway is reactive (WebFlux), so no thread waits while the downstream service works.</p></div></li>
+    <li><div><h3>Token is checked, if one was sent</h3>
+      <p>If the request has <code>Authorization: Bearer …</code>, the signature is verified with Keycloak's public keys from <code>/realms/master/protocol/openid-connect/certs</code>. The keys are cached, so Keycloak is not called on every request. Expiry is checked too.</p>
+      <span class="exit bad">bad or expired token → 401</span></div></li>
+    <li><div><h3>Roles are pulled out of the token</h3>
+      <p><code>KeyCloakRoleConverter</code> reads <code>realm_access.roles</code> and every <code>resource_access.*.roles</code>, upper-cases each one and adds the <code>ROLE_</code> prefix. This is how Keycloak's role names become something Spring Security understands.</p></div></li>
+    <li><div><h3>Path is matched against the access rules</h3>
+      <p>Rules in <code>SecurityConfig</code> are read top to bottom and the first one that matches decides. A path that matches no rule is denied.</p>
+      <span class="exit bad">no token → 401</span> <span class="exit bad">token, wrong role → 403</span></div></li>
+    <li><div><h3>Path is matched against the routes</h3>
+      <p>The eight routes in <code>application.yml</code> are tried in order. The first whose <code>Path</code> predicate matches gives the target, for example <code>lb://booking-service</code>.</p>
+      <span class="exit warn">no route matches → 404</span></div></li>
+    <li><div><h3>Load balancer picks an instance</h3>
+      <p><code>lb://</code> means: ask the local copy of the Eureka registry for the instances of that service name and choose one (round-robin). The name becomes a real IP and port.</p>
+      <span class="exit warn">service not registered → 503</span></div></li>
+    <li><div><h3>Request is forwarded unchanged</h3>
+      <p>Same path, same body, same headers. The <code>Authorization</code> header is passed along, so the service can read the same token to learn who the user is. The response streams back to the client.</p>
+      <span class="exit ok">service's own response</span></div></li>
+  </ol>
+</section>
+
+<section>
+  <div class="col">
+    <h2>Try a request</h2>
+    <p>Pick a path and a role to see what the gateway does with it, using the exact rules and routes in this project.</p>
+  </div>
+  <div class="tracer">
+    <div class="controls">
+      <label for="tPath">Path
+        <input id="tPath" type="text" value="/api/bookings/12" spellcheck="false" autocomplete="off">
+      </label>
+      <label for="tRole">Caller
+        <select id="tRole">
+          <option value="">No token</option>
+          <option value="CUSTOMER" selected>Token with role CUSTOMER</option>
+          <option value="SALON_OWNER">Token with role SALON_OWNER</option>
+          <option value="ADMIN">Token with role ADMIN</option>
+          <option value="OTHER">Token with no matching role</option>
+        </select>
+      </label>
+    </div>
+    <div class="chips" id="tChips"></div>
+    <div class="verdict" id="tVerdict"></div>
+    <div class="stages">
+      <div class="stage" id="sSec"><span class="k">Access rule</span><span class="v"></span></div>
+      <div class="stage" id="sRoute"><span class="k">Route</span><span class="v"></span></div>
+      <div class="stage" id="sDest"><span class="k">Forwarded to</span><span class="v"></span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2>Access rules</h2>
+    <p>From <code>SecurityConfig.java</code>, in the order Spring checks them. CSRF is disabled, which is normal for a token-based API.</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Paths</th><th>Who may pass</th><th>Effect today</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td><code>/auth/**</code></td><td>Everyone</td><td><span class="tag ok">open</span> login and signup need no token</td></tr>
+      <tr><td class="n">2</td><td><code>/api/notifications/ws/**</code></td><td>Everyone</td><td><span class="tag ok">open</span> WebSocket handshake for live notifications</td></tr>
+      <tr><td class="n">3</td><td><code>/api/salons/**</code> <code>/api/category/**</code> <code>/api/notifications/**</code> <code>/api/bookings/**</code> <code>/api/payments/**</code> <code>/api/service-offering/**</code> <code>/api/users/**</code> <code>/users/**</code> <code>/api/reviews/**</code></td><td>CUSTOMER, SALON_OWNER or ADMIN</td><td><span class="tag info">any logged-in role</span></td></tr>
+      <tr class="dead"><td class="n">4</td><td><code>/api/category/salon-owner/**</code> <code>/api/service-offering/salon-owner</code> <code>/api/notifications/salon-owner/**</code> <code>/api/service-offering/**</code></td><td>SALON_OWNER only</td><td><span class="tag warn">never reached</span> rule 3 already matched every one of these paths</td></tr>
+      <tr><td class="n">–</td><td>Everything else, including <code>/salons/**</code>, <code>/api/admin/**</code>, <code>/actuator/**</code></td><td>No one</td><td><span class="tag bad">denied</span> no rule matches, so 401 without a token and 403 with one</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="col">
+    <h2>Routes</h2>
+    <p>From <code>application.yml</code>. The path is not rewritten; the service receives exactly what the client sent.</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Route id</th><th>Path predicates</th><th>Target</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">SALON-SERVICE</td><td><code>/salons/**</code> <code>/api/salons/**</code> <code>/api/admin/salons/**</code></td><td class="mono">lb://salon-service</td></tr>
+      <tr><td class="mono">USER-SERVICE</td><td><code>/auth/**</code> <code>/api/admin/users/**</code> <code>/api/users/**</code> <code>/users/**</code></td><td class="mono">lb://user-service</td></tr>
+      <tr><td class="mono">SERVICE-OFFER</td><td><code>/api/service-offering/**</code></td><td class="mono">lb://Service-Offer</td></tr>
+      <tr><td class="mono">CATEGORY-SERVICE</td><td><code>/api/category/**</code></td><td class="mono">lb://category-service</td></tr>
+      <tr><td class="mono">BOOKING-SERVICE</td><td><code>/api/bookings/**</code></td><td class="mono">lb://booking-service</td></tr>
+      <tr><td class="mono">PAYMENT-SERVICE</td><td><code>/api/payments/**</code></td><td class="mono">lb://payment-service</td></tr>
+      <tr><td class="mono">NOTIFICATION-SERVICE</td><td><code>/api/notifications/**</code></td><td class="mono">lb://notification-service</td></tr>
+      <tr><td class="mono">REVIEW-SERVICE</td><td><code>/api/reviews/**</code></td><td class="mono">lb://review-service</td></tr>
+    </tbody>
+  </table></div>
+  <p class="col" style="color:var(--muted);font-size:15px">The discovery locator is also switched on, which auto-creates a route <code>/&lt;service-id&gt;/**</code> for every service in Eureka. No access rule covers those paths, so they are all denied and have no effect.</p>
+</section>
+
+<section>
+  <div class="col">
+    <h2>How a Keycloak token becomes Spring roles</h2>
+    <p>Keycloak stores roles in two places inside the token. The converter collects both, so it does not matter whether you created the role at realm level or on a client.</p>
+  </div>
+  <div class="two">
+    <div><h3>Inside the JWT</h3>
+<pre>{
+  "sub": "8f1c…",
+  "realm_access": {
+    "roles": ["customer"]
+  },
+  "resource_access": {
+    "salon-app": {
+      "roles": ["salon_owner"]
+    }
+  }
+}</pre></div>
+    <div><h3>After KeyCloakRoleConverter</h3>
+<pre>ROLE_CUSTOMER
+ROLE_SALON_OWNER</pre>
+      <p class="arrowrow" style="margin-top:12px">"ROLE_" + role.toUpperCase()</p>
+      <p style="margin-top:12px;font-size:15px;color:var(--muted)"><code>hasAnyRole("CUSTOMER")</code> looks for <code>ROLE_CUSTOMER</code>. Without the prefix and the upper-casing, every role check would fail with 403.</p>
+    </div>
+  </div>
+</section>
+
+<section class="col">
+  <h2>Starting it locally</h2>
+  <p>The gateway depends on three things. Start them in this order so the first request works:</p>
+  <ol class="pipe">
+    <li><div><h3>Keycloak on :8080</h3><p>Realm <code>master</code>, with roles <code>CUSTOMER</code>, <code>SALON_OWNER</code>, <code>ADMIN</code> assigned to users.</p></div></li>
+    <li><div><h3>Eureka server on :8070</h3><p>The gateway registers itself here as <code>gateway-server</code> and downloads the list of services.</p></div></li>
+    <li><div><h3>The eight services</h3><p>Each must register under the exact name used after <code>lb://</code> in the route table.</p></div></li>
+    <li><div><h3>The gateway on :5002</h3><p><code>./mvnw spring-boot:run</code>. Point the frontend at <code>http://localhost:5002</code> and nowhere else. <code>./mvnw jib:build</code> produces the Docker image.</p></div></li>
+  </ol>
+</section>
+
+<section class="col">
+  <h2>What I would fix</h2>
+  <p>Reading the code closely turned up five things. The first two change who can reach what, so they matter most.</p>
+  <ul class="finds">
+    <li><span><span class="tag bad">security</span></span><div><h3>The SALON_OWNER-only rule never runs</h3>
+      <p>Rules are first-match-wins, and the broad rule 3 comes before the narrow rule 4. A CUSTOMER can call <code>/api/category/salon-owner/**</code> and the other owner-only paths; the gateway lets it through. Put the narrow rule above the broad one. Also remove <code>/api/service-offering/**</code> from the owner rule, or customers will lose access to listings once the order is fixed.</p>
+      <div class="where">SecurityConfig.java:28–40</div></div></li>
+    <li><span><span class="tag bad">broken</span></span><div><h3>Three routed path groups are blocked for everyone</h3>
+      <p><code>/salons/**</code>, <code>/api/admin/salons/**</code> and <code>/api/admin/users/**</code> have routes but no access rule, so they always return 401 or 403, even for an ADMIN. Add rules for them (probably <code>hasRole("ADMIN")</code> for <code>/api/admin/**</code>) and end the list with an explicit <code>anyExchange()</code> line so the default is visible in the code.</p>
+      <div class="where">SecurityConfig.java:24–40 · application.yml:25,30</div></div></li>
+    <li><span><span class="tag warn">deploy</span></span><div><h3>Keycloak and Eureka addresses are fixed to localhost</h3>
+      <p>The JWKS URL is written twice: once in <code>application.yml</code> and again hard-coded in the <code>reactiveJwtDecoder</code> bean, which is the one actually used. Inside the Docker image <code>localhost</code> is the container itself, so token checks and Eureka registration will fail. Delete the bean (Spring Boot builds the same decoder from the yml property) and supply both URLs through environment variables.</p>
+      <div class="where">SecurityConfig.java:58–63 · application.yml:12,73</div></div></li>
+    <li><span><span class="tag warn">setup</span></span><div><h3>Users live in Keycloak's master realm</h3>
+      <p><code>master</code> is Keycloak's own admin realm. App users and roles normally go in a separate realm, so an app account can never become a Keycloak administrator.</p>
+      <div class="where">application.yml:12</div></div></li>
+    <li><span><span class="tag info">tidy</span></span><div><h3>Leftover config</h3>
+      <p><code>spring.jpa.show-sql</code> does nothing here because the gateway has no database. The predicate <code>/api/category/salon-owner**</code> is already covered by <code>/api/category/**</code>. The discovery locator can be turned off since its routes are unreachable.</p>
+      <div class="where">application.yml:16–19,40,63–64</div></div></li>
+  </ul>
+  <div>
+    <h3 style="margin:12px 0 8px">A rule order that does what the current one intends</h3>
+<pre>exchanges
+  .pathMatchers("/auth/**", "/api/notifications/ws/**").permitAll()
+  .pathMatchers("/api/category/salon-owner/**",
+                "/api/service-offering/salon-owner/**",
+                "/api/notifications/salon-owner/**").hasRole("SALON_OWNER")
+  .pathMatchers("/api/admin/**").hasRole("ADMIN")
+  .pathMatchers("/salons/**", "/api/salons/**", "/api/category/**",
+                "/api/notifications/**", "/api/bookings/**",
+                "/api/payments/**", "/api/service-offering/**",
+                "/api/users/**", "/users/**", "/api/reviews/**")
+      .hasAnyRole("CUSTOMER", "SALON_OWNER", "ADMIN")
+  .anyExchange().denyAll()</pre>
+    <p style="margin-top:10px;font-size:15px;color:var(--muted)">This assumes <code>/salons/**</code> needs a login and <code>/api/admin/**</code> is for admins. If salon browsing should be public, move <code>/salons/**</code> to the first line.</p>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+  var ALL=["CUSTOMER","SALON_OWNER","ADMIN"];
+  var rules=[
+    {n:1,p:["/auth/**"],open:true},
+    {n:2,p:["/api/notifications/ws/**"],open:true},
+    {n:3,p:["/api/salons/**","/api/category/**","/api/notifications/**","/api/bookings/**","/api/payments/**","/api/service-offering/**","/api/users/**","/users/**","/api/reviews/**"],roles:ALL},
+    {n:4,p:["/api/category/salon-owner/**","/api/service-offering/salon-owner","/api/notifications/salon-owner/**","/api/service-offering/**"],roles:["SALON_OWNER"]}
+  ];
+  var routes=[
+    {id:"SALON-SERVICE",t:"salon-service",p:["/salons/**","/api/salons/**","/api/admin/salons/**"]},
+    {id:"USER-SERVICE",t:"user-service",p:["/auth/**","/api/admin/users/**","/api/users/**","/users/**"]},
+    {id:"SERVICE-OFFER",t:"Service-Offer",p:["/api/service-offering/**"]},
+    {id:"CATEGORY-SERVICE",t:"category-service",p:["/api/category/**"]},
+    {id:"BOOKING-SERVICE",t:"booking-service",p:["/api/bookings/**"]},
+    {id:"PAYMENT-SERVICE",t:"payment-service",p:["/api/payments/**"]},
+    {id:"NOTIFICATION-SERVICE",t:"notification-service",p:["/api/notifications/**"]},
+    {id:"REVIEW-SERVICE",t:"review-service",p:["/api/reviews/**"]}
+  ];
+  var presets=[
+    ["/auth/login",""],["/api/bookings/12",""],["/api/bookings/12","CUSTOMER"],
+    ["/api/category/salon-owner/5","CUSTOMER"],["/salons/7","ADMIN"],
+    ["/api/admin/users","ADMIN"],["/api/notifications/ws/info",""],["/api/orders/1","CUSTOMER"]
+  ];
+  function m(pat,path){
+    if(pat.slice(-3)==="/**"){var b=pat.slice(0,-3);return path===b||path.indexOf(b+"/")===0;}
+    return path===pat;
+  }
+  function first(list,path){
+    for(var i=0;i<list.length;i++)for(var j=0;j<list[i].p.length;j++)if(m(list[i].p[j],path))return {item:list[i],pat:list[i].p[j]};
+    return null;
+  }
+  var $=function(id){return document.getElementById(id)};
+  var pathEl=$("tPath"),roleEl=$("tRole");
+  function set(id,cls,text){var e=$(id);e.className="stage "+cls;e.querySelector(".v").textContent=text;}
+  function run(){
+    var path=(pathEl.value||"").trim().split("?")[0];
+    if(path.charAt(0)!=="/")path="/"+path;
+    var role=roleEl.value,hasToken=role!=="";
+    var s=first(rules,path),ok,code,why;
+    if(!s){ok=false;code=hasToken?403:401;why="No rule matches this path, so it is denied.";}
+    else if(s.item.open){ok=true;why="Rule "+s.item.n+" ("+s.pat+") lets everyone through.";}
+    else if(!hasToken){ok=false;code=401;why="Rule "+s.item.n+" ("+s.pat+") needs a token and none was sent.";}
+    else if(s.item.roles.indexOf(role)>=0){ok=true;why="Rule "+s.item.n+" ("+s.pat+") accepts ROLE_"+role+".";}
+    else{ok=false;code=403;why="Rule "+s.item.n+" ("+s.pat+") needs one of: "+s.item.roles.join(", ")+".";}
+    var v=$("tVerdict");
+    if(!ok){
+      set("sSec","fail",why);set("sRoute","skip","Not reached.");set("sDest","skip","Not reached.");
+      v.className="verdict fail";v.textContent=code+(code===401?" Unauthorized":" Forbidden")+" — stopped at the access rules";return;
+    }
+    set("sSec","pass",why);
+    var r=first(routes,path);
+    if(!r){
+      set("sRoute","fail","No route predicate matches this path.");set("sDest","skip","Not reached.");
+      v.className="verdict fail";v.textContent="404 Not Found — allowed, but no route";return;
+    }
+    set("sRoute","pass",r.item.id+" matched on "+r.pat);
+    set("sDest","pass","lb://"+r.item.t+path+" — an instance chosen from Eureka");
+    v.className="verdict pass";v.textContent="Forwarded to "+r.item.t;
+  }
+  var chips=$("tChips");
+  presets.forEach(function(p){
+    var b=document.createElement("button");b.type="button";
+    b.textContent=p[0]+" · "+(p[1]||"no token");
+    b.addEventListener("click",function(){pathEl.value=p[0];roleEl.value=p[1];run();});
+    chips.appendChild(b);
+  });
+  pathEl.addEventListener("input",run);roleEl.addEventListener("change",run);
+  run();
+})();
+</script>
+
+</body></html>

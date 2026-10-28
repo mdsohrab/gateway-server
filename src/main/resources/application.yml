@@ -1,0 +1,86 @@
+server:
+  port: 5002
+
+# The values after the colon are local development defaults.
+# In any shared or production environment set the environment variables instead.
+app:
+  cors:
+    # comma separated list of frontend origins allowed to call the gateway
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+spring:
+  application:
+    name: gateway-server
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/master/protocol/openid-connect/certs}
+
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+      routes:
+        - id: SALON-SERVICE
+          uri: "lb://salon-service"
+          predicates:
+            - Path=/salons/**, /api/salons/**, /api/admin/salons/**
+
+        - id: USER-SERVICE
+          uri: "lb://user-service"
+          predicates:
+            - Path=/auth/**, /api/admin/users/**, /api/users/**, /users/**
+
+        - id: SERVICE-OFFER
+          uri: "lb://Service-Offer"
+          predicates:
+            - Path=/api/service-offering/**
+
+        - id: CATEGORY-SERVICE
+          uri: "lb://category-service"
+          predicates:
+            - Path=/api/category/**
+
+        - id: BOOKING-SERVICE
+          uri: "lb://booking-service"
+          predicates:
+            - Path=/api/bookings/**
+
+        - id: PAYMENT-SERVICE
+          uri: "lb://payment-service"
+          predicates:
+            - Path=/api/payments/**
+
+        - id: NOTIFICATION-SERVICE
+          uri: "lb://notification-service"
+          predicates:
+            - Path=/api/notifications/**
+
+        - id: REVIEW-SERVICE
+          uri: "lb://review-service"
+          predicates:
+            - Path=/api/reviews/**
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    fetch-registry: true
+    register-with-eureka: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8070/eureka/}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: gateway,health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
