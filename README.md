@@ -1,19 +1,43 @@
-# Gateway Server
+<p align="center">
+  <img src="docs/images/banner.svg" alt="gateway-server: verifies Keycloak JWTs and routes every request to the right service" width="100%">
+</p>
 
-The single entry point of the **salon booking microservices system**. Every request from the web or mobile app comes here first. The gateway does two jobs, always in this order:
+<p align="center">
+  <img alt="Java 17" src="https://img.shields.io/badge/Java-17-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white">
+  <img alt="Spring Boot 3.4.10" src="https://img.shields.io/badge/Spring_Boot-3.4.10-6DB33F?style=for-the-badge&logo=springboot&logoColor=white">
+  <img alt="Spring Cloud Gateway" src="https://img.shields.io/badge/Spring_Cloud-Gateway-6DB33F?style=for-the-badge&logo=spring&logoColor=white">
+  <img alt="Keycloak JWT" src="https://img.shields.io/badge/Keycloak-JWT-4D4D4D?style=for-the-badge&logo=keycloak&logoColor=white">
+  <img alt="Eureka discovery" src="https://img.shields.io/badge/Eureka-discovery-1E40AF?style=for-the-badge">
+  <img alt="Docker via Jib" src="https://img.shields.io/badge/Docker-Jib-2496ED?style=for-the-badge&logo=docker&logoColor=white">
+</p>
 
-1. **Security**: checks who is calling, using a Keycloak JWT, and whether that role may use the path.
-2. **Routing**: finds the right microservice through Eureka and forwards the request unchanged.
+<p align="center">
+  <a href="#1-the-whole-system-on-one-page">Architecture</a> ·
+  <a href="#2-one-request-step-by-step">Request flow</a> ·
+  <a href="#3-access-rules">Access rules</a> ·
+  <a href="#4-routes">Routes</a> ·
+  <a href="#5-how-a-keycloak-token-becomes-spring-roles">Roles</a> ·
+  <a href="#6-run-locally">Run locally</a>
+</p>
+
+---
+
+<img src="docs/images/icon.svg" alt="" width="72" align="right">
+
+The single entry point of the **salon booking microservices system**. Every request from the web or mobile app comes here first, and the gateway does two jobs, always in this order:
+
+1. 🛡️ **Security**: checks who is calling, using a Keycloak JWT, and whether that role may use the path.
+2. 🧭 **Routing**: finds the right microservice through Eureka and forwards the request unchanged.
 
 It holds no business logic and no database.
 
 | | |
 |---|---|
-| Port | `5002` |
-| Eureka name | `gateway-server` |
-| Stack | Spring Cloud Gateway (WebFlux) · Spring Boot 3.4.10 · Java 17 |
-| Talks to | Keycloak `:8080` (token keys) · Eureka `:8070` (service addresses) |
-| Docker image | `codecaptcha/gateway-server-yt:v1` (Jib) |
+| **Port** | `5002` |
+| **Eureka name** | `gateway-server` |
+| **Stack** | Spring Cloud Gateway (WebFlux) · Spring Boot 3.4.10 · Java 17 |
+| **Talks to** | Keycloak `:8080` (token keys) · Eureka `:8070` (service addresses) |
+| **Docker image** | `codecaptcha/gateway-server-yt:v1` (Jib) |
 
 ---
 
@@ -160,7 +184,8 @@ From [`application.yml`](src/main/resources/application.yml). The path is **not 
 | NOTIFICATION-SERVICE | `/api/notifications/**` | `lb://notification-service` |
 | REVIEW-SERVICE | `/api/reviews/**` | `lb://review-service` |
 
-Each service must register in Eureka under **exactly** the name after `lb://` (note `Service-Offer`), otherwise the gateway answers 503.
+> [!IMPORTANT]
+> Each service must register in Eureka under **exactly** the name after `lb://` (note `Service-Offer`), otherwise the gateway answers 503.
 
 ---
 
@@ -207,7 +232,8 @@ flowchart LR
 ./mvnw compile jib:dockerBuild  # build the Docker image
 ```
 
-Point the frontend at `http://localhost:5002` and nowhere else.
+> [!TIP]
+> Point the frontend at `http://localhost:5002` and nowhere else. The services' own ports are for internal calls only.
 
 ## Configuration
 
@@ -223,12 +249,18 @@ In Docker, set both URLs to the container names (for example `http://keycloak:80
 
 ## Known gaps
 
-- `/salons/**`, `/api/admin/salons/**` and `/api/admin/users/**` have routes but no access rule, so they are denied for everyone, admins included. Add `.pathMatchers("/api/admin/**").hasRole("ADMIN")` once those endpoints are confirmed.
-- The discovery locator is on and creates `/<service-id>/**` routes, which no rule allows, so they are unreachable. It can be switched off.
-- Users live in Keycloak's `master` realm. Use a dedicated realm in production.
+> [!WARNING]
+> - `/salons/**`, `/api/admin/salons/**` and `/api/admin/users/**` have routes but no access rule, so they are denied for everyone, admins included. Add `.pathMatchers("/api/admin/**").hasRole("ADMIN")` once those endpoints are confirmed.
+> - The discovery locator is on and creates `/<service-id>/**` routes that no rule allows, so they are unreachable. It can be switched off.
+> - Users live in Keycloak's `master` realm. Use a dedicated realm in production.
 
 ## Design docs
 
-- [docs/gateway-server-flow.html](docs/gateway-server-flow.html): the full interactive design page. Download it and open it in a browser to try the "Try a request" simulator. Its access-rules table and "What I would fix" list describe the code **before** the fixes in [CHANGES.md](CHANGES.md); the tables in this README match the current code.
-- [CHANGES.md](CHANGES.md): what was changed and why.
-- [curl/](curl/): ready-made requests and `run-all.sh` to test the gateway end to end.
+| | |
+|---|---|
+| 🗺️ [docs/gateway-server-flow.html](docs/gateway-server-flow.html) | The full interactive design page. Download it and open it in a browser to use the **Try a request** simulator. |
+| 📝 [CHANGES.md](CHANGES.md) | What was changed in the gateway and why. |
+| 🧪 [curl/](curl/) | Ready-made requests and `run-all.sh` to test the gateway end to end. |
+
+> [!NOTE]
+> The design page's *Access rules* table and *What I would fix* list describe the code **before** the fixes in [CHANGES.md](CHANGES.md). The tables in this README match the current code.
